@@ -1,3 +1,9 @@
+cd ~/your-repo-name
+mkdir -p .github/workflows
+WF=$(ls .github/workflows/*.y*ml 2>/dev/null | head -n 1)
+WF=${WF:-.github/workflows/build.yml}
+echo "Writing to: $WF"
+cat > "$WF" << 'EOF'
 name: Build Android APK
 
 on:
@@ -50,9 +56,12 @@ jobs:
             exit 1
           fi
 
+          echo "$SDK/build-tools/35.0.0" >> "$GITHUB_PATH"
+          echo "ANDROID_JAR=$SDK/platforms/android-35/android.jar" >> "$GITHUB_ENV"
+          ls -la "$SDK/build-tools/35.0.0" | head -30
+
       - name: Locate project files
         run: |
-          # If the project is not in the repo root, try unzipping the zip files
           if [ ! -f AndroidManifest.xml ]; then
             for z in tv-launcher-apk-ready.zip "tv-launcher (1).zip"; do
               if [ -f "$z" ]; then
@@ -101,3 +110,7 @@ jobs:
           path: ${{ env.PROJECT_DIR }}/build/tvhome-signed.apk
           if-no-files-found: error
           retention-days: 7
+EOF
+git add .
+git commit -m "Fix build-tools PATH"
+git push
