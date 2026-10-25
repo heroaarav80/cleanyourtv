@@ -1,4 +1,4 @@
-name: Build TV Launcher APK
+name: Build Android APK
 
 on:
   workflow_dispatch:
@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   build:
-    name: Build Android APK
+    name: Build TV Launcher
     runs-on: ubuntu-latest
 
     steps:
@@ -24,42 +24,59 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android build tools
+      - name: Install Android SDK components
         run: |
-          sdkmanager --install \
+          SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "$SDK/platform-tools" >> "$GITHUB_PATH"
+          echo "$SDK/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$SDK/cmdline-tools/latest/bin/sdkmanager" \
+            "platform-tools" \
             "platforms;android-35" \
             "build-tools;35.0.0"
+          echo "$SDK/build-tools/35.0.0" >> "$GITHUB_PATH"
+          echo "ANDROID_JAR=$SDK/platforms/android-35/android.jar" >> "$GITHUB_ENV"
 
-          yes | sdkmanager --licenses || true
-
-      - name: Configure Android SDK
+      - name: Locate project files
         run: |
-          echo "$ANDROID_HOME/build-tools/35.0.0" >> "$GITHUB_PATH"
-          echo "ANDROID_JAR=$ANDROID_HOME/platforms/android-35/android.jar" >> "$GITHUB_ENV"
+          if [ ! -f AndroidManifest.xml ]; then
+            for z in tv-launcher-apk-ready.zip "tv-launcher (1).zip"; do
+              if [ -f "$z" ]; then
+                unzip -o -q "$z" -d unzipped_project
+              fi
+            done
+          fi
 
-      - name: Check project files
-        run: |
-          test -f AndroidManifest.xml
-          test -f build.sh
-          test -f src/com/tvhome/launcher/MainActivity.java
-          echo "All required launcher files were found."
+          MANIFEST=$(find . -maxdepth 4 -name AndroidManifest.xml \
+            -not -path "./.git/*" -not -path "./examples/*" \
+            -not -path "./addons/*" | head -n 1)
+
+          if [ -z "$MANIFEST" ]; then
+            echo "AndroidManifest.xml not found."
+            ls -R . | head -100
+            exit 1
+          fi
+
+          DIR=$(dirname "$MANIFEST")
+          echo "Project found in: $DIR"
+          echo "PROJECT_DIR=$DIR" >> "$GITHUB_ENV"
+          ls -la "$DIR"
 
       - name: Build APK
+        working-directory: ${{ env.PROJECT_DIR }}
         run: |
+          chmod +x build.sh
           bash build.sh
 
       - name: Verify APK
-        run: |
-          test -f build/tvhome-signed.apk
-          ls -lh build/tvhome-signed.apk
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: ls -lh build/tvhome-signed.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: cleanyourtv-apk
-          path: build/tvhome-signed.apk
+          path: ${{ env.PROJECT_DIR }}/build/tvhome-signed.apk
           if-no-files-found: error
           retention-days: 7
