@@ -1,0 +1,2 @@
+cd cleanyourtv/addons/digital-rain
+./gradlew assembleRelease
